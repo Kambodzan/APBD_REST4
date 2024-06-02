@@ -1,4 +1,5 @@
 ﻿using APBD_REST4.Data;
+using APBD_REST4.Models;
 using APBD_REST4.Models.DTOs;
 using Microsoft.EntityFrameworkCore;
 
@@ -65,11 +66,102 @@ public class TripRepositories : ITripRepositories
         return queryResult;
     }
 
+    public async Task<int> AddClientToTrip(ClientAssignment clientAssignment, CancellationToken cancellationToken)
+    {
+        if (await CheckIfPeselExists(clientAssignment, cancellationToken))
+        {
+            return 1;
+        }
+
+        if (await CheckIfClientIsNotAlreadyRegisteredOnTrip(clientAssignment, cancellationToken))
+        {
+            return 2;
+        }
+
+        if (await CheckIfTripExists(clientAssignment, cancellationToken))
+        {
+            return 3;
+        }
+
+        if (await CheckIfTripDateIsValid(clientAssignment, cancellationToken))
+        {
+            return 4;
+        }
+
+        using (var transaction = await _context.Database.BeginTransactionAsync(cancellationToken))
+        {
+            try
+            {
+                var newTripAssignment = new ClientTrip
+                {
+                    IdClient = await _context.Clients.Where(client => client.Pesel == clientAssignment.Pesel)
+                        .Select(client => client.IdClient).FirstOrDefaultAsync(cancellationToken),
+                    IdTrip = clientAssignment.IdTrip,
+                    RegisteredAt = DateTime.Now,
+                    PaymentDate = clientAssignment.PaymentDate
+
+                };
+
+                _context.ClientTrips.Add(newTripAssignment);
+                await _context.SaveChangesAsync(cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
+                
+                return 0;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                await transaction.RollbackAsync(cancellationToken);
+                return 5;
+            }
+        }
+    }
+
     public async Task<bool> CheckIfClientDoesNotHaveAssignedTrips(int clientId, CancellationToken cancellationToken)
     {
         var query = await _context.ClientTrips.Where(client => client.IdClient == clientId)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return query != null;
+        return query == null;
+    }
+
+    public async Task<bool> CheckIfPeselExists(ClientAssignment clientAssignment, CancellationToken cancellationToken)
+    {
+        var query = await _context.Clients.Where(client => client.Pesel == clientAssignment.Pesel)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return query == null;
+    }
+
+    public async Task<bool> CheckIfClientIsNotAlreadyRegisteredOnTrip(ClientAssignment clientAssignment,
+        CancellationToken cancellationToken)
+    {
+        var isRegistered = await (from client in _context.Clients
+                join clientTrip in _context.ClientTrips on client.IdClient equals clientTrip.IdClient
+                where client.Pesel == clientAssignment.Pesel && clientTrip.IdTrip == clientAssignment.IdTrip
+                select clientTrip)
+            .AnyAsync(cancellationToken);
+
+        // True jeśli nie jest zarejestrowany
+        return isRegistered;
+    }
+
+    public async Task<bool> CheckIfTripExists(ClientAssignment clientAssignment, CancellationToken cancellationToken)
+    {
+        var doesExists = await _context.Trips.Where(trip => trip.IdTrip == clientAssignment.IdTrip)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return doesExists == null;
+    }
+
+    public async Task<bool> CheckIfTripDateIsValid(ClientAssignment clientAssignment,
+        CancellationToken cancellationToken)
+    {
+        var TripDate = await _context.Trips.Where(trip => trip.IdTrip == clientAssignment.IdTrip)
+            .Select(trip => trip.DateFrom).FirstOrDefaultAsync(cancellationToken);
+
+        // True jeśli wycieczka już się odbyła
+        return TripDate < DateTime.Now;
     }
 }

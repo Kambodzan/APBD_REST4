@@ -1,4 +1,5 @@
-﻿using APBD_REST4.Models.DTOs;
+﻿using APBD_REST4.Models;
+using APBD_REST4.Models.DTOs;
 using APBD_REST4.Repositories;
 
 namespace APBD_REST4.Services;
@@ -24,5 +25,12 @@ public class TripService : ITripService
         var clientRemoval = await _tripRepositories.DeleteClient(clientId, cancellationToken);
 
         return clientRemoval;
+    }
+
+    public async Task<int> AddClientToTrip(ClientAssignment clientAssignment, CancellationToken cancellationToken)
+    {
+        var operationResult = await _tripRepositories.AddClientToTrip(clientAssignment, cancellationToken);
+
+        return operationResult;
     }
 }
