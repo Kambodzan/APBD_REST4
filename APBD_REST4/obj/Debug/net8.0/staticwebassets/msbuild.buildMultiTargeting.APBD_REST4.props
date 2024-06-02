@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\APBD_REST4.props" />
+</Project>
